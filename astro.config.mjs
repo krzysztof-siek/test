@@ -12,6 +12,13 @@ export default defineConfig({
   integrations: [react(), sitemap()],
   vite: {
     plugins: [tailwindcss()],
+    resolve: {
+      alias: import.meta.env.PROD
+        ? {
+            "react-dom/server": "react-dom/server.edge",
+          }
+        : {},
+    },
   },
   adapter: cloudflare(),
   experimental: { session: true },
