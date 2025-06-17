@@ -17,7 +17,7 @@ AI - Komunikacja z modelami przez usługę Openrouter.ai:
 
 CI/CD i Hosting:
 - Github Actions do tworzenia pipeline'ów CI/CD
-- DigitalOcean do hostowania aplikacji za pośrednictwem obrazu docker
+- Cloudflare Pages jako hosting aplikacji Astro
 
 Testing - Kompleksowa strategia testowania:
 
@@ -39,14 +39,6 @@ Testing - Kompleksowa strategia testowania:
   - Dedykowana testowa instancja bazy danych Supabase
   - Testowanie integracji z mockami API LLM
   - Weryfikacja przepływu danych między frontend-backend
-
-- Testy End-to-End (E2E):
-  - Playwright jako główne narzędzie do testów end-to-end
-  - Symulacja rzeczywistych scenariuszy użycia z perspektywy użytkownika
-  - Testowanie pełnych przepływów użytkownika (np. rejestracja -> generowanie fiszek)
-  - Automatyzacja testów E2E w CI/CD przed każdym wdrożeniem
-  - @axe-core/playwright do testów dostępności
-  - @playwright/test jako natywny test runner
 
 - Środowisko testowe:
   - Dedykowana, odizolowana instancja bazy danych Supabase
