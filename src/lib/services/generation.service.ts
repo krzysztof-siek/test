@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Generation, SuggestionDto } from "../../types";
-import { llmService } from "./llm.service";
+import { LLMService } from "./llm.service";
+import { OPENROUTER_API_KEY } from "astro:env/server";
 
 // Helper function to create SHA-256 hash using Web Crypto API
 async function createSHA256Hash(text: string): Promise<string> {
@@ -13,8 +14,17 @@ async function createSHA256Hash(text: string): Promise<string> {
 
 export class GenerationService {
   private readonly MODEL = "openai/gpt-4o-mini";
+  private llmService: LLMService;
 
-  constructor(private supabase: SupabaseClient) {}
+  constructor(private supabase: SupabaseClient) {
+    // Create LLM service with proper API key
+    this.llmService = new LLMService({
+      model: this.MODEL,
+      maxRetries: 3,
+      timeoutMs: 60000,
+      apiKey: OPENROUTER_API_KEY,
+    });
+  }
 
   async createGeneration(params: {
     userId: string;
@@ -84,7 +94,7 @@ export class GenerationService {
       const startTime = Date.now();
 
       // Generowanie fiszek za pomocą LLMService
-      const result = await llmService.generateFlashcardSuggestions(sourceText);
+      const result = await this.llmService.generateFlashcardSuggestions(sourceText);
       const generationDurationMs = Date.now() - startTime;
 
       console.log("[GenerationService] LLM service response:", {

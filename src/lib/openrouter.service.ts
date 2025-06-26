@@ -8,10 +8,7 @@ import { PUBLIC_APP_NAME } from "astro:env/client";
 import { OpenRouterService } from "./openrouter";
 
 // Create a singleton instance with proper server configuration
-export const openRouterService = new OpenRouterService();
-
-// Override the apiKey with server-side configuration
-(openRouterService as any).apiKey = OPENROUTER_API_KEY;
+export const openRouterService = new OpenRouterService(OPENROUTER_API_KEY);
 
 // Utility function to get server configuration for headers
 export function getServerConfig() {

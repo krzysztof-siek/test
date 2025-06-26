@@ -16,21 +16,29 @@ export class OpenRouterService {
   private readonly apiKey: string;
   private readonly baseUrl = "https://openrouter.ai/api/v1";
 
-  constructor() {
+  constructor(apiKey?: string) {
     // Sprawdź różne miejsca, gdzie może być dostępny klucz API
     // Note: astro:env variables will be available in proper server context
-    const apiKey =
+    const resolvedApiKey =
+      apiKey ||
       process.env.OPENROUTER_API_KEY ||
       import.meta.env.OPENROUTER_API_KEY ||
       import.meta.env.PUBLIC_OPENROUTER_API_KEY ||
       DEFAULT_API_KEY;
 
-    this.apiKey = apiKey;
+    this.apiKey = resolvedApiKey;
 
     // Pokaż ostrzeżenie, jeśli używamy domyślnego klucza
     if (this.apiKey === DEFAULT_API_KEY) {
       console.error("[OpenRouter] Using default API key. Please provide a valid API key.");
     }
+
+    // Debug: log API key info (without exposing the actual key)
+    console.log("[OpenRouter] API key configured:", {
+      hasKey: !!this.apiKey && this.apiKey !== DEFAULT_API_KEY,
+      keyLength: this.apiKey?.length || 0,
+      keyPrefix: this.apiKey?.substring(0, 10) || "none",
+    });
   }
 
   /**

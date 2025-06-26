@@ -19,6 +19,7 @@ interface LLMConfig {
   model: string;
   maxRetries: number;
   timeoutMs: number;
+  apiKey?: string;
 }
 
 const SYSTEM_PROMPT = `Generate concise flashcards from the text. Each card must have a question (front) and answer (back).
@@ -39,7 +40,7 @@ export class LLMService {
       maxRetries: config.maxRetries || 3,
       timeoutMs: config.timeoutMs || 30000, // Zmniejszamy timeout do 30 sekund
     };
-    this.openRouterService = new OpenRouterService();
+    this.openRouterService = new OpenRouterService(config.apiKey);
   }
 
   async generateFlashcardSuggestions(sourceText: string): Promise<LLMResponse> {
@@ -141,4 +142,7 @@ export const llmService = new LLMService({
   model: "openai/gpt-4o-mini",
   maxRetries: 3,
   timeoutMs: 60000,
+  apiKey:
+    (typeof process !== "undefined" && process.env?.OPENROUTER_API_KEY) ||
+    (typeof import.meta !== "undefined" && import.meta.env?.OPENROUTER_API_KEY),
 });
