@@ -286,7 +286,7 @@ Do not include any text before or after the JSON array. Do not include schema de
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "HTTP-Authorization": `Bearer ${this.apiKey}`,
+          "OpenRouter-API-Key": this.apiKey,
           "HTTP-Referer": import.meta.env.SITE || "https://example.com",
           "X-Title": import.meta.env.PUBLIC_APP_NAME || "OpenRouter Service",
         },
