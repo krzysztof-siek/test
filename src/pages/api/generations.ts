@@ -13,8 +13,11 @@ const generateFlashcardsSchema = z.object({
 
 export const POST: APIRoute = async ({ request, locals }) => {
   try {
+    console.log("[GenerationsAPI] Received POST request");
+
     // Sprawdzenie autoryzacji
     if (!locals.user) {
+      console.error("[GenerationsAPI] Unauthorized request");
       return new Response(
         JSON.stringify({
           error: "Unauthorized",
@@ -29,30 +32,60 @@ export const POST: APIRoute = async ({ request, locals }) => {
 
     // Używamy ID zalogowanego użytkownika
     const userId = locals.user.id;
-    const supabase = locals.supabase; // Używamy supabase z locals zamiast globalnego klienta
+    const supabase = locals.supabase;
     const generationService = new GenerationService(supabase);
 
     // Parse and validate input
-    const body = (await request.json()) as GenerateFlashcardsCommand;
+    let body: GenerateFlashcardsCommand;
+    try {
+      body = await request.json();
+    } catch (error) {
+      console.error("[GenerationsAPI] Failed to parse request body:", error);
+      return new Response(
+        JSON.stringify({
+          error: "Invalid Request",
+          message: "Failed to parse request body",
+          details: error instanceof Error ? error.message : "Unknown parsing error",
+        }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+    }
 
     const validationResult = generateFlashcardsSchema.safeParse(body);
 
     if (!validationResult.success) {
+      console.error("[GenerationsAPI] Validation failed:", validationResult.error.errors);
       return new Response(
         JSON.stringify({
           error: "Validation Error",
           message: "Invalid input data",
           validation_errors: validationResult.error.errors,
         }),
-        { status: 400 }
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        }
       );
     }
 
     try {
+      console.log("[GenerationsAPI] Starting flashcard generation", {
+        userId,
+        textLength: body.source_text.length,
+      });
+
       // Generate flashcard suggestions using the integrated GenerationService
       const result = await generationService.generateFlashcardSuggestions({
         userId,
         sourceText: body.source_text,
+      });
+
+      console.log("[GenerationsAPI] Generation successful", {
+        generationId: result.generation.id,
+        suggestionsCount: result.suggestions.length,
       });
 
       // Return response
@@ -80,16 +113,41 @@ export const POST: APIRoute = async ({ request, locals }) => {
       });
     } catch (error) {
       // Obsługa błędów związanych z generacją
+      console.error("[GenerationsAPI] Generation failed:", error);
+
+      // Determine appropriate status code based on error type
+      let statusCode = 503; // Default to Service Unavailable
+      let errorType = "Generation Error";
+      let errorMessage = "Failed to generate flashcard suggestions";
+
+      if (error instanceof Error) {
+        if (error.message.includes("Database error")) {
+          statusCode = 500;
+          errorType = "Database Error";
+        } else if (error.message.includes("LLM service error")) {
+          // Keep 503 for LLM service errors
+          errorMessage = error.message;
+        } else if (error.message.includes("No valid flashcard suggestions")) {
+          statusCode = 422;
+          errorType = "Processing Error";
+          errorMessage = "Failed to generate valid flashcards";
+        }
+      }
+
       return new Response(
         JSON.stringify({
-          error: "Generation Error",
-          message: error instanceof Error ? error.message : "Failed to generate flashcard suggestions",
+          error: errorType,
+          message: errorMessage,
           details: error instanceof Error ? { name: error.name, stack: error.stack } : null,
         }),
-        { status: 503 }
+        {
+          status: statusCode,
+          headers: { "Content-Type": "application/json" },
+        }
       );
     }
   } catch (error) {
+    console.error("[GenerationsAPI] Unexpected error:", error);
     return new Response(
       JSON.stringify({
         error: "Internal Server Error",
@@ -97,7 +155,10 @@ export const POST: APIRoute = async ({ request, locals }) => {
         details:
           error instanceof Error ? { name: error.name, message: error.message, stack: error.stack } : String(error),
       }),
-      { status: 500 }
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      }
     );
   }
 };
