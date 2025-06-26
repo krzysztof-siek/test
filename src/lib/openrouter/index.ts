@@ -270,64 +270,53 @@ Do not include any text before or after the JSON array. Do not include schema de
    */
   async #request<T>(payload: object, retryCount = 0): Promise<T> {
     const maxRetries = 3;
-    const timeout = 30000; // 30 seconds
 
     try {
       console.log(`[OpenRouter] Sending request (attempt ${retryCount + 1}/${maxRetries + 1})`);
 
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), timeout);
+      const response = await fetch(`${this.baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${this.apiKey}`,
+          "HTTP-Referer": import.meta.env.SITE || "https://example.com",
+          "X-Title": import.meta.env.PUBLIC_APP_NAME || "OpenRouter Service",
+        },
+        body: JSON.stringify(payload),
+      });
 
+      // Log response status and headers for debugging
+      console.log(`[OpenRouter] Response status: ${response.status}`);
+      console.log(`[OpenRouter] Response headers:`, Object.fromEntries(response.headers.entries()));
+
+      let data: any;
       try {
-        const response = await fetch(`${this.baseUrl}/chat/completions`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${this.apiKey}`,
-            "HTTP-Referer": import.meta.env.SITE || "https://example.com",
-            "X-Title": import.meta.env.PUBLIC_APP_NAME || "OpenRouter Service",
-          },
-          body: JSON.stringify(payload),
-          signal: controller.signal,
-        });
-
-        clearTimeout(timeoutId);
-
-        // Log response status and headers for debugging
-        console.log(`[OpenRouter] Response status: ${response.status}`);
-        console.log(`[OpenRouter] Response headers:`, Object.fromEntries(response.headers.entries()));
-
-        let data: any;
-        try {
-          const text = await response.text();
-          console.log(`[OpenRouter] Raw response:`, text);
-          data = JSON.parse(text);
-        } catch (parseError) {
-          console.error(`[OpenRouter] Failed to parse response:`, parseError);
-          throw new JSONParsingError("Failed to parse API response");
-        }
-
-        if (!response.ok) {
-          // For 5xx errors, retry if we haven't exceeded max retries
-          if (response.status >= 500 && retryCount < maxRetries) {
-            console.log(`[OpenRouter] Server error (${response.status}), retrying...`);
-            const delay = Math.min(Math.pow(2, retryCount) * 1000, 10000);
-            await new Promise((resolve) => setTimeout(resolve, delay));
-            return this.#request(payload, retryCount + 1);
-          }
-
-          this.#handleApiError(response, data);
-        }
-
-        // Validate response structure
-        if (!data || typeof data !== "object") {
-          throw new OpenRouterServerError("Invalid response format");
-        }
-
-        return data as T;
-      } finally {
-        clearTimeout(timeoutId);
+        const text = await response.text();
+        console.log(`[OpenRouter] Raw response:`, text);
+        data = JSON.parse(text);
+      } catch (parseError) {
+        console.error(`[OpenRouter] Failed to parse response:`, parseError);
+        throw new JSONParsingError("Failed to parse API response");
       }
+
+      if (!response.ok) {
+        // For 5xx errors, retry if we haven't exceeded max retries
+        if (response.status >= 500 && retryCount < maxRetries) {
+          console.log(`[OpenRouter] Server error (${response.status}), retrying...`);
+          const delay = Math.min(Math.pow(2, retryCount) * 1000, 10000);
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          return this.#request(payload, retryCount + 1);
+        }
+
+        this.#handleApiError(response, data);
+      }
+
+      // Validate response structure
+      if (!data || typeof data !== "object") {
+        throw new OpenRouterServerError("Invalid response format");
+      }
+
+      return data as T;
     } catch (error: unknown) {
       console.error(`[OpenRouter] Request failed:`, error);
 
