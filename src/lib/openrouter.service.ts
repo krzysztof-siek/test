@@ -21,5 +21,7 @@ export function getServerConfig() {
   };
 }
 
+// Re-export the class and other utilities
+export { OpenRouterService } from "./openrouter";
 export * from "./openrouter/errors";
 export type * from "./openrouter/types";
