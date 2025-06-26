@@ -11,13 +11,15 @@ interface RateLimitEntry {
 export class RateLimitService {
   private store: Map<string, RateLimitEntry>;
   private config: RateLimitConfig;
+  private lastCleanup: number;
 
   constructor(config: RateLimitConfig) {
     this.store = new Map();
     this.config = config;
+    this.lastCleanup = Date.now();
 
-    // Cleanup old entries every minute
-    setInterval(() => this.cleanup(), 60000);
+    // Remove setInterval - Cloudflare Workers don't allow it in global scope
+    // Instead, we'll do lazy cleanup during checkRateLimit calls
   }
 
   async checkRateLimit(userId: string): Promise<{
@@ -26,6 +28,13 @@ export class RateLimitService {
     resetAt: number;
   }> {
     const now = Date.now();
+
+    // Lazy cleanup - run cleanup every 5 minutes max
+    if (now - this.lastCleanup > 5 * 60 * 1000) {
+      this.cleanup();
+      this.lastCleanup = now;
+    }
+
     const entry = this.store.get(userId);
 
     if (!entry || entry.resetAt <= now) {
