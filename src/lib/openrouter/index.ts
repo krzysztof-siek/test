@@ -18,10 +18,11 @@ export class OpenRouterService {
 
   constructor() {
     // Sprawdź różne miejsca, gdzie może być dostępny klucz API
+    // Note: astro:env variables will be available in proper server context
     const apiKey =
+      process.env.OPENROUTER_API_KEY ||
       import.meta.env.OPENROUTER_API_KEY ||
       import.meta.env.PUBLIC_OPENROUTER_API_KEY ||
-      process.env.OPENROUTER_API_KEY ||
       DEFAULT_API_KEY;
 
     this.apiKey = apiKey;
