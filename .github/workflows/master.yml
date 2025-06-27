@@ -1,4 +1,4 @@
-name: Lint, Test & Build Master
+name: Lint, Test & Build Master Bro
 
 on:
   push:
@@ -15,7 +15,7 @@ jobs:
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
-        with: 
+        with:
           node-version-file: .nvmrc
           cache: 'npm'
 
@@ -34,7 +34,7 @@ jobs:
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
-        with: 
+        with:
           node-version-file: .nvmrc
           cache: 'npm'
 
@@ -46,6 +46,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          SUPABASE_PUBLIC_KEY: ${{ secrets.SUPABASE_PUBLIC_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
 
   deploy:
@@ -63,7 +64,7 @@ jobs:
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
-        with: 
+        with:
           node-version-file: .nvmrc
           cache: 'npm'
 
@@ -78,6 +79,14 @@ jobs:
           SUPABASE_PUBLIC_KEY: ${{ secrets.SUPABASE_PUBLIC_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
 
+      - name: Debug Cloudflare Config
+        run: |
+          echo "Using Account ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}"
+          echo "Checking if dist directory exists..."
+          ls -la dist || echo "❌ dist directory not found!"
+          echo "Current working directory:"
+          pwd
+
       - name: Publish to Cloudflare Pages
         id: deploy
         uses: cloudflare/wrangler-action@v3
@@ -87,6 +96,18 @@ jobs:
           command: pages deploy dist --project-name=test
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Good Job
-        run: echo "Build przeszedł pomyślnie, dobra robota!"
+      - name: Verify Deployment
+        if: success()
+        run: |
+          echo "✅ Deployment successful!"
+          echo "🌍 Deployment URL: ${{ steps.deploy.outputs.url }}"
 
+      - name: Deployment Failed
+        if: failure()
+        run: |
+          echo "❌ Deployment failed!"
+          echo "Please check if:"
+          echo "1. CLOUDFLARE_API_TOKEN has correct permissions (Cloudflare Pages - Edit)"
+          echo "2. CLOUDFLARE_ACCOUNT_ID is correct"
+          echo "3. The project 'test' exists in your Cloudflare Pages"
+          echo "4. The dist directory exists and contains the build output"

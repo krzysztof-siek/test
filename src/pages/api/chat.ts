@@ -1,5 +1,5 @@
 import type { APIRoute } from "astro";
-import { OpenRouterService, OpenRouterInvalidRequestError } from "../../lib/openrouter.service";
+import { openRouterService, OpenRouterInvalidRequestError } from "../../lib/openrouter.service";
 
 export const prerender = false;
 
@@ -15,7 +15,8 @@ export const POST: APIRoute = async ({ request }) => {
       });
     }
 
-    const openrouter = new OpenRouterService();
+    // Use the configured singleton instance
+    const openrouter = openRouterService;
 
     // Example for getCompletion
     if (body.type === "text") {

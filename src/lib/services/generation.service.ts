@@ -1,10 +1,30 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Generation, SuggestionDto } from "../../types";
-import crypto from "crypto";
-import { llmService } from "./llm.service";
+import { LLMService } from "./llm.service";
+import { OPENROUTER_API_KEY } from "astro:env/server";
+
+// Helper function to create SHA-256 hash using Web Crypto API
+async function createSHA256Hash(text: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(text);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+}
 
 export class GenerationService {
-  constructor(private supabase: SupabaseClient) {}
+  private readonly MODEL = "openai/gpt-4o-mini";
+  private llmService: LLMService;
+
+  constructor(private supabase: SupabaseClient) {
+    // Create LLM service with proper API key
+    this.llmService = new LLMService({
+      model: this.MODEL,
+      maxRetries: 3,
+      timeoutMs: 60000,
+      apiKey: OPENROUTER_API_KEY,
+    });
+  }
 
   async createGeneration(params: {
     userId: string;
@@ -15,28 +35,47 @@ export class GenerationService {
   }): Promise<Generation> {
     const { userId, sourceText, suggestions, model, generationDurationMs } = params;
 
-    const sourceTextHash = crypto.createHash("sha256").update(sourceText).digest("hex");
-
-    const { data, error } = await this.supabase
-      .from("generations")
-      .insert({
-        user_id: userId,
+    try {
+      console.log("[GenerationService] Creating generation record", {
+        userId,
         model,
-        generated_count: suggestions.length,
-        source_text_hash: sourceTextHash,
-        source_text_length: sourceText.length,
-        generation_duration: generationDurationMs,
-        accepted_edited_count: 0,
-        accepted_unedited_count: 0,
-      })
-      .select()
-      .single();
+        suggestionsCount: suggestions.length,
+        textLength: sourceText.length,
+        duration: generationDurationMs,
+      });
 
-    if (error) {
-      throw new Error(`Failed to create generation: ${error.message}`);
+      const sourceTextHash = await createSHA256Hash(sourceText);
+
+      const { data, error } = await this.supabase
+        .from("generations")
+        .insert({
+          user_id: userId,
+          model,
+          generated_count: suggestions.length,
+          source_text_hash: sourceTextHash,
+          source_text_length: sourceText.length,
+          generation_duration: generationDurationMs,
+          accepted_edited_count: 0,
+          accepted_unedited_count: 0,
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error("[GenerationService] Failed to create generation record:", error);
+        throw new Error(`Database error: ${error.message}`);
+      }
+
+      if (!data) {
+        console.error("[GenerationService] No data returned from insert");
+        throw new Error("Failed to create generation record: no data returned");
+      }
+
+      return data;
+    } catch (error) {
+      console.error("[GenerationService] Unexpected error in createGeneration:", error);
+      throw error;
     }
-
-    return data;
   }
 
   async generateFlashcardSuggestions(params: { userId: string; sourceText: string }): Promise<{
@@ -45,47 +84,70 @@ export class GenerationService {
   }> {
     const { userId, sourceText } = params;
 
-    const startTime = Date.now();
-
-    // Generowanie fiszek za pomocą LLMService
-    const result = await llmService.generateFlashcardSuggestions(sourceText);
-    const generationDurationMs = Date.now() - startTime;
-
-    // Tworzenie rekordu generacji w bazie danych
-    if (result.error) {
-      // Logowanie błędu, jeśli wystąpił
-      const sourceTextHash = crypto.createHash("sha256").update(sourceText).digest("hex");
-
-      await this.logGenerationError({
+    try {
+      console.log("[GenerationService] Starting flashcard generation", {
         userId,
-        sourceTextHash,
-        sourceTextLength: sourceText.length,
-        model: "openai/gpt-3.5-turbo", // Zaktualizowana nazwa modelu
-        errorCode: result.error.code,
-        errorMessage: result.error.message,
+        textLength: sourceText.length,
+        model: this.MODEL,
       });
 
-      // Zwracamy puste wyniki w przypadku błędu
-      throw new Error(`Failed to generate flashcards: ${result.error.message}`);
+      const startTime = Date.now();
+
+      // Generowanie fiszek za pomocą LLMService
+      const result = await this.llmService.generateFlashcardSuggestions(sourceText);
+      const generationDurationMs = Date.now() - startTime;
+
+      console.log("[GenerationService] LLM service response:", {
+        success: !result.error,
+        duration: generationDurationMs,
+        suggestionsCount: result.suggestions?.length || 0,
+      });
+
+      // Tworzenie rekordu generacji w bazie danych
+      if (result.error) {
+        // Logowanie błędu, jeśli wystąpił
+        const sourceTextHash = await createSHA256Hash(sourceText);
+
+        console.error("[GenerationService] LLM service error:", {
+          errorCode: result.error.code,
+          errorMessage: result.error.message,
+        });
+
+        await this.logGenerationError({
+          userId,
+          sourceTextHash,
+          sourceTextLength: sourceText.length,
+          model: this.MODEL,
+          errorCode: result.error.code,
+          errorMessage: result.error.message,
+        });
+
+        // Zwracamy puste wyniki w przypadku błędu
+        throw new Error(`LLM service error (${result.error.code}): ${result.error.message}`);
+      }
+
+      // Zapisujemy wygenerowane fiszki
+      if (!Array.isArray(result.suggestions) || result.suggestions.length === 0) {
+        console.error("[GenerationService] No valid suggestions returned");
+        throw new Error("No valid flashcard suggestions to save");
+      }
+
+      const generation = await this.createGeneration({
+        userId,
+        sourceText,
+        suggestions: result.suggestions,
+        model: this.MODEL,
+        generationDurationMs,
+      });
+
+      return {
+        generation,
+        suggestions: result.suggestions,
+      };
+    } catch (error) {
+      console.error("[GenerationService] Unexpected error in generateFlashcardSuggestions:", error);
+      throw error;
     }
-
-    // Zapisujemy wygenerowane fiszki
-    if (!Array.isArray(result.suggestions) || result.suggestions.length === 0) {
-      throw new Error("No valid flashcard suggestions to save");
-    }
-
-    const generation = await this.createGeneration({
-      userId,
-      sourceText,
-      suggestions: result.suggestions,
-      model: "openai/gpt-3.5-turbo", // Zaktualizowana nazwa modelu
-      generationDurationMs,
-    });
-
-    return {
-      generation,
-      suggestions: result.suggestions,
-    };
   }
 
   async logGenerationError(params: {
@@ -97,21 +159,26 @@ export class GenerationService {
     errorMessage: string;
   }): Promise<void> {
     try {
-      // Upewnij się, że nazwy kolumn są zgodne ze schematem bazy danych
+      console.log("[GenerationService] Logging generation error", {
+        userId: params.userId,
+        model: params.model,
+        errorCode: params.errorCode,
+      });
+
       const { error } = await this.supabase.from("generation_error_logs").insert({
         user_id: params.userId,
         source_text_hash: params.sourceTextHash,
         source_text_length: params.sourceTextLength,
         model: params.model,
-        error_code: params.errorCode, // Zmieniono z errorCode na error_code
-        error_message: params.errorMessage, // Zmieniono z errorMessage na error_message
+        error_code: params.errorCode,
+        error_message: params.errorMessage,
       });
 
       if (error) {
-        // Ignorowanie błędów logowania
+        console.error("[GenerationService] Failed to log generation error:", error);
       }
-    } catch {
-      // Ignorowanie błędów logowania
+    } catch (error) {
+      console.error("[GenerationService] Unexpected error while logging generation error:", error);
     }
   }
 }

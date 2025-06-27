@@ -16,99 +16,124 @@ export class OpenRouterService {
   private readonly apiKey: string;
   private readonly baseUrl = "https://openrouter.ai/api/v1";
 
-  constructor() {
+  constructor(apiKey?: string) {
     // Sprawdź różne miejsca, gdzie może być dostępny klucz API
-    const apiKey =
+    // Note: astro:env variables will be available in proper server context
+    const resolvedApiKey =
+      apiKey ||
+      process.env.OPENROUTER_API_KEY ||
       import.meta.env.OPENROUTER_API_KEY ||
       import.meta.env.PUBLIC_OPENROUTER_API_KEY ||
-      process.env.OPENROUTER_API_KEY ||
       DEFAULT_API_KEY;
 
-    this.apiKey = apiKey;
+    this.apiKey = resolvedApiKey;
 
     // Pokaż ostrzeżenie, jeśli używamy domyślnego klucza
     if (this.apiKey === DEFAULT_API_KEY) {
-      // Usuń wszystkie console.warn, console.log, console.error
+      console.error("[OpenRouter] Using default API key. Please provide a valid API key.");
     }
+
+    // Debug: log API key info (without exposing the actual key)
+    console.log("[OpenRouter] API key configured:", {
+      hasKey: !!this.apiKey && this.apiKey !== DEFAULT_API_KEY,
+      keyLength: this.apiKey?.length || 0,
+      keyPrefix: this.apiKey?.substring(0, 10) || "none",
+    });
   }
 
   /**
    * Get a standard text completion from the OpenRouter API
    */
   public async getCompletion(options: CompletionOptions): Promise<string> {
-    const payload = this.#buildPayload(options);
-    const response = await this.#request<OpenRouterResponse>(payload);
+    try {
+      const payload = this.#buildPayload(options);
+      const response = await this.#request<OpenRouterResponse>(payload);
 
-    if (!response.choices || response.choices.length === 0) {
-      throw new Error("No completion returned from OpenRouter API");
+      if (!response.choices || response.choices.length === 0) {
+        console.error("[OpenRouter] No completion returned from API");
+        throw new Error("No completion returned from OpenRouter API");
+      }
+
+      return response.choices[0].message.content;
+    } catch (error) {
+      console.error("[OpenRouter] Error in getCompletion:", error);
+      throw error;
     }
-
-    return response.choices[0].message.content;
   }
 
   /**
    * Get a structured completion (JSON response) from the OpenRouter API
    */
   public async getStructuredCompletion<T>(options: StructuredCompletionOptions): Promise<T> {
-    const payload = this.#buildPayload(options);
-    const response = await this.#request<OpenRouterResponse>(payload);
-
-    if (!response.choices || response.choices.length === 0) {
-      // Usuń wszystkie console.warn, console.log, console.error
-      throw new Error("No completion returned from OpenRouter API");
-    }
-
-    const content = response.choices[0].message.content;
-    // Usuń wszystkie console.warn, console.log, console.error
-
     try {
-      // Próba oczyszczenia odpowiedzi z potencjalnych dodatkowych znaków
-      const cleanedContent = this.#cleanJsonContent(content);
-      // Usuń wszystkie console.warn, console.log, console.error
+      const payload = this.#buildPayload(options);
+      console.log("[OpenRouter] Sending request with payload:", JSON.stringify(payload));
 
-      let parsed: any;
+      const response = await this.#request<OpenRouterResponse>(payload);
+      console.log("[OpenRouter] Received response:", JSON.stringify(response));
+
+      if (!response.choices || response.choices.length === 0) {
+        console.error("[OpenRouter] No completion returned from API");
+        throw new Error("No completion returned from OpenRouter API");
+      }
+
+      const content = response.choices[0].message.content;
+      console.log("[OpenRouter] Raw content:", content);
+
       try {
-        parsed = JSON.parse(cleanedContent);
-      } catch {
-        // Jeśli parsowanie się nie powiodło, spróbuj jeszcze raz z surową odpowiedzią
+        const cleanedContent = this.#cleanJsonContent(content);
+        console.log("[OpenRouter] Cleaned content:", cleanedContent);
+
+        let parsed: any;
         try {
-          parsed = JSON.parse(content);
-        } catch {
-          throw new JSONParsingError("Failed to parse model response as JSON.");
-        }
-      }
-
-      // Jeśli oczekujemy tablicy, a dostaliśmy obiekt z właściwością zawierającą tablicę
-      if (
-        Array.isArray(options.schema) ||
-        (typeof options.schema === "object" &&
-          options.schema !== null &&
-          "type" in options.schema &&
-          options.schema.type === "array")
-      ) {
-        if (Array.isArray(parsed)) {
-          return parsed as T;
-        } else if (typeof parsed === "object" && parsed !== null) {
-          // Szukamy pierwszej właściwości, która jest tablicą
-          const arrayProp = Object.values(parsed).find(Array.isArray);
-          if (arrayProp) {
-            return arrayProp as T;
-          }
-          // Jeśli mamy obiekt z items, spróbujmy go przetworzyć
-          if ("items" in parsed && Array.isArray(parsed.items)) {
-            return parsed.items as T;
+          parsed = JSON.parse(cleanedContent);
+        } catch (parseError) {
+          console.error("[OpenRouter] Failed to parse cleaned content:", parseError);
+          try {
+            parsed = JSON.parse(content);
+          } catch (rawParseError) {
+            console.error("[OpenRouter] Failed to parse raw content:", rawParseError);
+            throw new JSONParsingError("Failed to parse model response as JSON.");
           }
         }
-        throw new Error("Response is not an array and does not contain an array property");
-      }
 
-      return parsed as T;
-    } catch (error: unknown) {
-      if (error instanceof JSONParsingError) {
-        throw error;
+        // Jeśli oczekujemy tablicy, a dostaliśmy obiekt z właściwością zawierającą tablicę
+        if (
+          Array.isArray(options.schema) ||
+          (typeof options.schema === "object" &&
+            options.schema !== null &&
+            "type" in options.schema &&
+            options.schema.type === "array")
+        ) {
+          if (Array.isArray(parsed)) {
+            return parsed as T;
+          } else if (typeof parsed === "object" && parsed !== null) {
+            // Szukamy pierwszej właściwości, która jest tablicą
+            const arrayProp = Object.values(parsed).find(Array.isArray);
+            if (arrayProp) {
+              return arrayProp as T;
+            }
+            // Jeśli mamy obiekt z items, spróbujmy go przetworzyć
+            if ("items" in parsed && Array.isArray(parsed.items)) {
+              return parsed.items as T;
+            }
+          }
+          console.error("[OpenRouter] Response is not an array:", parsed);
+          throw new Error("Response is not an array and does not contain an array property");
+        }
+
+        return parsed as T;
+      } catch (error: unknown) {
+        if (error instanceof JSONParsingError) {
+          throw error;
+        }
+        const errorMessage = error instanceof Error ? error.message : "Unknown error";
+        console.error("[OpenRouter] Failed to process model response:", error);
+        throw new Error(`Failed to process model response: ${errorMessage}`);
       }
-      const errorMessage = error instanceof Error ? error.message : "Unknown error";
-      throw new Error(`Failed to process model response: ${errorMessage}`);
+    } catch (error) {
+      console.error("[OpenRouter] Error in getStructuredCompletion:", error);
+      throw error;
     }
   }
 
@@ -251,8 +276,12 @@ Do not include any text before or after the JSON array. Do not include schema de
   /**
    * Send a request to the OpenRouter API
    */
-  async #request<T>(payload: object): Promise<T> {
+  async #request<T>(payload: object, retryCount = 0): Promise<T> {
+    const maxRetries = 3;
+
     try {
+      console.log(`[OpenRouter] Sending request (attempt ${retryCount + 1}/${maxRetries + 1})`);
+
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
         method: "POST",
         headers: {
@@ -264,16 +293,54 @@ Do not include any text before or after the JSON array. Do not include schema de
         body: JSON.stringify(payload),
       });
 
-      const data = await response.json();
+      // Log response status and headers for debugging
+      console.log(`[OpenRouter] Response status: ${response.status}`);
+      console.log(`[OpenRouter] Response headers:`, Object.fromEntries(response.headers.entries()));
+
+      let data: any;
+      try {
+        const text = await response.text();
+        console.log(`[OpenRouter] Raw response:`, text);
+        data = JSON.parse(text);
+      } catch (parseError) {
+        console.error(`[OpenRouter] Failed to parse response:`, parseError);
+        throw new JSONParsingError("Failed to parse API response");
+      }
 
       if (!response.ok) {
+        // For 5xx errors, retry if we haven't exceeded max retries
+        if (response.status >= 500 && retryCount < maxRetries) {
+          console.log(`[OpenRouter] Server error (${response.status}), retrying...`);
+          const delay = Math.min(Math.pow(2, retryCount) * 1000, 10000);
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          return this.#request(payload, retryCount + 1);
+        }
+
         this.#handleApiError(response, data);
       }
 
+      // Validate response structure
+      if (!data || typeof data !== "object") {
+        throw new OpenRouterServerError("Invalid response format");
+      }
+
       return data as T;
-    } catch (error) {
+    } catch (error: unknown) {
+      console.error(`[OpenRouter] Request failed:`, error);
+
       if (error instanceof OpenRouterError) throw error;
-      throw new NetworkError("A network error occurred while communicating with OpenRouter API.");
+
+      if (error instanceof Error) {
+        if (error.name === "AbortError") {
+          throw new NetworkError("Request timed out");
+        }
+
+        if (error instanceof TypeError && error.message.includes("fetch")) {
+          throw new NetworkError("Network error occurred");
+        }
+      }
+
+      throw new OpenRouterServerError("Unknown error occurred");
     }
   }
 
