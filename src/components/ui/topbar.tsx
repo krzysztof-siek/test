@@ -12,7 +12,7 @@ export function Topbar({ user }: TopbarProps) {
   return (
     <div className="border-b bg-background">
       <div className="container max-w-8xl mx-auto px-2 py-3 flex items-center justify-between">
-        <a href="/" className="text-xl font-bold hover:opacity-80 transition-opacity">
+        <a href="/" className="text-xl font-bold hover:opacity-80 transition-opacity hidden sm:block">
           10x-cards-by-Krzysiek
         </a>
         <div className="flex items-center gap-2">

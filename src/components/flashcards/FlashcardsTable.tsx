@@ -29,47 +29,41 @@ function TruncatedText({ text, className }: { text: string; className?: string }
   );
 }
 
-// Format daty dla wyświetlania
-function formatDate(dateString: string): string {
-  const date = new Date(dateString);
-  return new Intl.DateTimeFormat("pl-PL", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date);
-}
-
 // Komponent dla wyświetlania źródła fiszki
 function SourceBadge({ source }: { source: Source }) {
-  let label: string;
-  let variant: "default" | "outline" | "secondary" | "destructive";
-  let icon = null;
+  const sourceConfig = {
+    manual: {
+      label: "Ręczna",
+      icon: UserIcon,
+    },
+    "ai-full": {
+      label: "AI",
+      icon: BrainIcon,
+    },
+    "ai-edited": {
+      label: "AI (edytowana)",
+      icon: BrainIcon,
+    },
+  };
 
-  switch (source) {
-    case "ai-full":
-      label = "AI";
-      variant = "secondary";
-      icon = <BrainIcon className="h-3 w-3 mr-1" />;
-      break;
-    case "ai-edited":
-      label = "AI (edytowane)";
-      variant = "outline";
-      icon = <BrainIcon className="h-3 w-3 mr-1" />;
-      break;
-    case "manual":
-    default:
-      label = "Ręcznie";
-      variant = "default";
-      icon = <UserIcon className="h-3 w-3 mr-1" />;
-      break;
-  }
+  const config = sourceConfig[source];
 
   return (
-    <Badge variant={variant} className="inline-flex items-center">
-      {icon}
-      {label}
+    <Badge variant="secondary" className="w-fit">
+      <config.icon className="h-3 w-3 mr-1" />
+      {config.label}
     </Badge>
   );
+}
+
+// Formatowanie daty
+function formatDate(dateString: string) {
+  const date = new Date(dateString);
+  return new Intl.DateTimeFormat("pl-PL", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "2-digit",
+  }).format(date);
 }
 
 export function FlashcardsTable({ flashcards, onEdit, onDelete }: FlashcardsTableProps) {
@@ -79,39 +73,45 @@ export function FlashcardsTable({ flashcards, onEdit, onDelete }: FlashcardsTabl
         <Table className="w-full table-fixed">
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[30%]">Przód</TableHead>
-              <TableHead className="w-[30%]">Tył</TableHead>
-              <TableHead className="w-[15%]">Typ</TableHead>
-              <TableHead className="w-[15%]">Utworzono</TableHead>
+              <TableHead className="w-[30%] sm:w-[30%]">Przód</TableHead>
+              <TableHead className="w-[30%] sm:w-[30%]">Tył</TableHead>
+              <TableHead className="w-[30%] sm:w-[15%]">Typ</TableHead>
+              <TableHead className="hidden sm:table-cell w-[15%]">Utworzono</TableHead>
               <TableHead className="w-[10%] text-right">Akcje</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {flashcards.map((flashcard) => (
               <TableRow key={flashcard.id}>
-                <TableCell className="font-medium w-[30%] p-3 align-top">
+                <TableCell className="font-medium w-[30%] sm:w-[30%] p-2 sm:p-3 align-top">
                   <div className="w-full overflow-hidden">
                     <TruncatedText text={flashcard.front} className="font-medium" />
                   </div>
                 </TableCell>
-                <TableCell className="w-[30%] p-3 align-top">
+                <TableCell className="w-[30%] sm:w-[30%] p-2 sm:p-3 align-top">
                   <div className="w-full overflow-hidden">
                     <TruncatedText text={flashcard.back} />
                   </div>
                 </TableCell>
-                <TableCell className="w-[15%] p-3 align-top">
+                <TableCell className="w-[30%] sm:w-[15%] p-2 sm:p-3 align-top">
                   <SourceBadge source={flashcard.source} />
                 </TableCell>
-                <TableCell className="w-[15%] p-3 align-top text-muted-foreground text-sm">
+                <TableCell className="hidden sm:table-cell w-[15%] p-2 sm:p-3 align-top text-muted-foreground text-sm">
                   <div className="flex items-center">
                     <CalendarIcon className="h-3 w-3 mr-1.5" />
                     {formatDate(flashcard.created_at)}
                   </div>
                 </TableCell>
-                <TableCell className="text-right w-[10%] p-3 align-top">
-                  <div className="flex justify-end space-x-2">
-                    <Button variant="ghost" size="icon" onClick={() => onEdit(flashcard)} aria-label="Edytuj fiszkę">
-                      <PencilIcon className="h-4 w-4" />
+                <TableCell className="text-right w-[10%] p-2 sm:p-3 align-top">
+                  <div className="flex justify-end space-x-0.5 sm:space-x-2">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => onEdit(flashcard)}
+                      aria-label="Edytuj fiszkę"
+                      className="h-8 w-8 sm:h-9 sm:w-9"
+                    >
+                      <PencilIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                     </Button>
                     <Button
                       variant="ghost"
@@ -119,12 +119,15 @@ export function FlashcardsTable({ flashcards, onEdit, onDelete }: FlashcardsTabl
                       onClick={() => onDelete(flashcard)}
                       aria-label="Usuń fiszkę"
                       disabled={flashcard.isDeleting}
-                      className={flashcard.isDeleting ? "opacity-50 cursor-not-allowed" : ""}
+                      className={cn(
+                        "h-8 w-8 sm:h-9 sm:w-9",
+                        flashcard.isDeleting ? "opacity-50 cursor-not-allowed" : ""
+                      )}
                     >
                       {flashcard.isDeleting ? (
-                        <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-current"></div>
+                        <div className="h-3.5 w-3.5 sm:h-4 sm:w-4 animate-spin rounded-full border-b-2 border-current"></div>
                       ) : (
-                        <TrashIcon className="h-4 w-4 text-destructive" />
+                        <TrashIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-destructive" />
                       )}
                     </Button>
                   </div>
